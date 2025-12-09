@@ -23,7 +23,7 @@ class UserDB:
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
-                value BOOLEAN
+                value BOOLEAN DEFAULT 0
             )
         ''')
         self.connection.commit()
