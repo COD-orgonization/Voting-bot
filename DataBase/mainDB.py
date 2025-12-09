@@ -20,6 +20,18 @@ class UserDB:
                 vote_count INTEGER DEFAULT 0
             )
         ''')
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value BOOLEAN
+            )
+        ''')
+        self.connection.commit()
+        
+        self.cursor.execute('''
+            INSERT OR IGNORE INTO settings (key, value) 
+            VALUES ('voting_enabled', false)
+        ''')
         self.connection.commit()
         
     def add_user(self, user_id: int, fio: str, photo_id: str, description: str = "") -> bool:
@@ -126,7 +138,30 @@ class UserDB:
         """Получает количество голосов пользователя"""
         user = self.get_user(user_id)
         return user['vote_count'] if user else 0
+
+    def reset_votes(self):
+        self.cursor.execute('UPDATE users SET is_voted = 0, vote_count = 0')
+        self.connection.commit()
+
+    def is_voting_enabled(self) -> bool:
+        """Проверяет, активно ли голосование"""
+        self.cursor.execute('SELECT value FROM settings WHERE key = ?', ('voting_enabled',))
+        result = self.cursor.fetchone()
+        return result[0]
         
+    def set_voting_enabled(self, enabled: bool) -> bool:
+        """Включает или выключает голосование"""
+        try:
+            self.cursor.execute('''
+                INSERT OR REPLACE INTO settings (key, value) 
+                VALUES ('voting_enabled', ?)
+            ''', (enabled,))
+            self.connection.commit()
+            return True
+        except Exception as e:
+            print(f"Error setting voting state: {e}")
+            return False
+
     def __del__ (self):
         """Закрытие соединения с БД"""
         self.connection.close()
