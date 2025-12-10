@@ -21,6 +21,7 @@ class RegistrationStates(StatesGroup):
 @router.message(F.text == "📝 Регистрация")
 async def registration_start(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
+    await state.clear()
     
     # Проверяем, зарегистрирован ли уже пользователь
     existing_user = db.get_user(user_id)
@@ -64,6 +65,7 @@ async def process_gender(callback: types.CallbackQuery, state: FSMContext):
 async def process_photo(message: types.Message, state: FSMContext):
     if message.photo:
         user_data = await state.get_data()
+        await state.clear()
         
         success = db.update_user(
             user_id=message.from_user.id,
@@ -77,7 +79,5 @@ async def process_photo(message: types.Message, state: FSMContext):
             await message.answer("✅ Регистрация завершена!")
         else:
             await message.answer("❌ Ошибка при регистрации. Возможно, вы уже зарегистрированы.")
-        
-        await state.clear()
     else:
         await message.answer("Пожалуйста, отправьте фотографию!")
