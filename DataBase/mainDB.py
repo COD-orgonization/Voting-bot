@@ -16,8 +16,10 @@ class UserDB:
                 fio TEXT,
                 description TEXT,
                 photo_id TEXT,
-                from_voice text,
-                is_voted BOOLEAN DEFAULT 0,
+                from_voice_prince text,
+                from_voice_princess text,            
+                voted_for_prince BOOLEAN DEFAULT 0,
+                voted_for_princess BOOLEAN DEFAULT 0,
                 vote_count INTEGER DEFAULT 0
             )
         ''')
@@ -38,13 +40,25 @@ class UserDB:
     def update_user(self, user_id: int, fio: str, photo_id: str, gender: bool, description: str = "") -> bool:
         """Добавление нового пользователя"""
         try:
-            self.cursor.execute('''
-                UPDATE users SET fio=?, photo_id=?, description=?, gender=? WHERE id=?
-            ''', (fio, photo_id, description, gender, user_id))
+            # Проверяем, существует ли пользователь
+            existing_user = self.get_user(user_id)
+            
+            if existing_user:
+                # Пользователь существует - обновляем данные
+                self.cursor.execute('''
+                    UPDATE users SET fio=?, photo_id=?, description=?, gender=? WHERE id=?
+                ''', (fio, photo_id, description, gender, user_id))
+            else:
+                # Пользователь не существует - создаем нового
+                self.cursor.execute('''
+                    INSERT INTO users (id, fio, photo_id, description, gender) VALUES (?, ?, ?, ?, ?)
+                ''', (user_id, fio, photo_id, description, gender))
+            
             self.connection.commit()
             return True
-        except sqlite3.IntegrityError:
-            # Пользователь уже существует
+        except sqlite3.Error as e:
+            # Обработка всех возможных ошибок SQLite
+            print(f"Ошибка при работе с базой данных: {e}")
             return False
 
     def add_user(self, user_id) -> bool:
@@ -63,17 +77,20 @@ class UserDB:
         """Получение информации о пользователе"""
         self.cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
         row = self.cursor.fetchone()
+        self.connection.commit()
         
         if row:
             return {
                 "id": row[0],
-                "gender": bool(row[1]),  # Добавлено поле gender
+                "gender": bool(row[1]),
                 "fio": row[2],
                 "description": row[3],
                 "photo_id": row[4],
-                "from_voice": row[5],
-                "is_voted": bool(row[6]),
-                "vote_count": row[7]
+                "from_voice_prince": row[5],
+                "from_voice_princess": row[6],
+                "voted_for_prince": bool(row[7]),
+                "voted_for_princess": bool(row[8]),
+                "vote_count": row[9]
             }
         return None
     
@@ -89,20 +106,27 @@ class UserDB:
         for row in rows:
             users.append({
                 "id": row[0],
-                "gender": bool(row[1]),  # Добавлено поле gender
+                "gender": bool(row[1]),
                 "fio": row[2],
                 "description": row[3],
                 "photo_id": row[4],
-                "from_voice": row[5],
-                "is_voted": bool(row[6]),
-                "vote_count": row[7]
+                "from_voice_prince": row[5],
+                "from_voice_princess": row[6],
+                "voted_for_prince": bool(row[7]),
+                "voted_for_princess": bool(row[8]),
+                "vote_count": row[9]
             })
+        self.connection.commit()
         return users
 
-    def get_users_for_voting(self, exclude_id: int = None) -> List[Dict[str, Any]]:
+    def get_users_for_voting(self, exclude_id: int = None, gender: bool = None) -> List[Dict[str, Any]]:
         """Получение пользователей для голосования"""
-        query = 'SELECT * FROM users WHERE id != ?'
+        query = 'SELECT * FROM users WHERE id != ? AND fio IS NOT NULL AND fio != ""'
         params = [exclude_id]
+        
+        if gender is not None:
+            query += ' AND gender = ?'
+            params.append(gender)
             
         self.cursor.execute(query, params)
         rows = self.cursor.fetchall()
@@ -115,26 +139,40 @@ class UserDB:
                 "fio": row[2],
                 "description": row[3],
                 "photo_id": row[4],
-                "from_voice": row[5],
-                "is_voted": bool(row[6]),
-                "vote_count": row[7]
+                "from_voice_prince": row[5],
+                "from_voice_princess": row[6],
+                "voted_for_prince": bool(row[7]),
+                "voted_for_princess": bool(row[8]),
+                "vote_count": row[9]
             })
+        self.connection.commit()
         return users
         
-    def process_vote(self, voter_id: int, target_id: int) -> bool:
+    def process_vote(self, voter_id: int, target_id: int, vote_for_prince: bool = True) -> bool:
         """Обработка голосования"""
         try:
-            # Проверяем, голосовал ли уже пользователь
-            self.cursor.execute('SELECT is_voted FROM users WHERE id = ?', (voter_id,))
-            voter = self.cursor.fetchone()
+            # Получаем информацию о голосующем и цели
+            voter = self.get_user(voter_id)
+            target = self.get_user(target_id)
             
-            if not voter or voter[0]:  # Пользователь не найден или уже голосовал
+            if not voter or not target:
                 return False
                 
-            # Обновляем статус голосовавшего
-            self.cursor.execute('''
-                UPDATE users SET is_voted = 1, from_voice = ? WHERE id = ?
-            ''', (target_id, voter_id,))
+            # Проверяем, голосовал ли уже пользователь
+            if vote_for_prince:
+                if voter["voted_for_prince"]:
+                    return False
+                # Обновляем статус голосовавшего
+                self.cursor.execute('''
+                    UPDATE users SET voted_for_prince = 1, from_voice_prince = ? WHERE id = ?
+                ''', (target_id, voter_id,))
+            else:
+                if voter["voted_for_princess"]:
+                    return False
+                # Обновляем статус голосовавшего
+                self.cursor.execute('''
+                    UPDATE users SET voted_for_princess = 1, from_voice_princess = ? WHERE id = ?
+                ''', (target_id, voter_id,))
             
             # Увеличиваем счетчик голосов у цели
             self.cursor.execute('''
@@ -147,10 +185,16 @@ class UserDB:
             print(f"Error processing vote: {e}")
             return False
             
-    def has_user_voted(self, user_id: int) -> bool:
+    def has_user_voted(self, user_id: int, vote_for_prince: bool = True) -> bool:
         """Проверяет, голосовал ли пользователь"""
         user = self.get_user(user_id)
-        return user['is_voted'] if user else False
+        if not user:
+            return False
+            
+        if vote_for_prince:
+            return user['voted_for_prince']
+        else:
+            return user['voted_for_princess']
         
     def get_user_vote_count(self, user_id: int) -> int:
         """Получает количество голосов пользователя"""
@@ -158,37 +202,103 @@ class UserDB:
         return user['vote_count'] if user else 0
 
     def reset_votes(self):
-        self.cursor.execute('UPDATE users SET is_voted = 0, vote_count = 0')
+        """Сброс всех голосов"""
+        self.cursor.execute('''
+            UPDATE users SET 
+                voted_for_prince = 0, 
+                voted_for_princess = 0,
+                from_voice_prince = NULL,
+                from_voice_princess = NULL,
+                vote_count = 0
+        ''')
         self.connection.commit()
     
-    def delete_user(self, user_id: int):
-        """Удаление пользователя с аннулированием связанных голосов"""
+    def reset_user_votes(self, user_id: str) -> bool:
         try:
-            # 1. Получаем информацию о том, за кого голосовал удаляемый пользователь
-            self.cursor.execute('SELECT from_voice FROM users WHERE id = ?', (user_id,))
-            row = self.cursor.fetchone()
-            
-            if row and row[0]:  # Если пользователь голосовал за кого-то
-                target_id = row[0]
+            user = self.get_user(user_id)
+
+            if user["from_voice_prince"]:
+                target_id = user["from_voice_prince"]
                 # Уменьшаем счетчик голосов у цели
                 self.cursor.execute('''
                     UPDATE users SET vote_count = vote_count - 1 
                     WHERE id = ? AND vote_count > 0
                 ''', (target_id,))
             
-            # 2. Находим всех, кто голосовал за удаляемого пользователя
-            self.cursor.execute('SELECT id FROM users WHERE from_voice = ?', (user_id,))
-            voters = self.cursor.fetchall()
+            if user["from_voice_princess"]:
+                target_id = user["from_voice_princess"]
+                # Уменьшаем счетчик голосов у цели
+                self.cursor.execute('''
+                    UPDATE users SET vote_count = vote_count - 1 
+                    WHERE id = ? AND vote_count > 0
+                ''', (target_id,))
+
+            self.cursor.execute('''
+            UPDATE users SET 
+                voted_for_prince = 0, 
+                voted_for_princess = 0,
+                from_voice_prince = NULL,
+                from_voice_princess = NULL
+                WHERE id=?
+            ''', (user_id,))
+            self.connection.commit()
+            return True
+        except Exception as e:
+            print(f"Error: {e}")
+            return False
+
+    def delete_user(self, user_id: int):
+        """Удаление пользователя с аннулированием связанных голосов"""
+        try:
+            # 1. Получаем информацию о том, за кого голосовал удаляемый пользователь
+            user = self.get_user(user_id)
             
-            # Сбрасываем статус голосования у тех, кто голосовал за удаляемого
-            for voter in voters:
+            if not user:
+                return False
+                
+            # 2. Обрабатываем голоса за принца
+            if user["from_voice_prince"]:
+                target_id = user["from_voice_prince"]
+                # Уменьшаем счетчик голосов у цели
+                self.cursor.execute('''
+                    UPDATE users SET vote_count = vote_count - 1 
+                    WHERE id = ? AND vote_count > 0
+                ''', (target_id,))
+            
+            # 3. Обрабатываем голоса за принцессу
+            if user["from_voice_princess"]:
+                target_id = user["from_voice_princess"]
+                # Уменьшаем счетчик голосов у цели
+                self.cursor.execute('''
+                    UPDATE users SET vote_count = vote_count - 1 
+                    WHERE id = ? AND vote_count > 0
+                ''', (target_id,))
+            
+            # 4. Находим всех, кто голосовал за удаляемого пользователя (как принца)
+            self.cursor.execute('SELECT id FROM users WHERE from_voice_prince = ?', (user_id,))
+            prince_voters = self.cursor.fetchall()
+            
+            # Сбрасываем статус голосования у тех, кто голосовал за удаляемого как принца
+            for voter in prince_voters:
                 voter_id = voter[0]
                 self.cursor.execute('''
-                    UPDATE users SET is_voted = 0, from_voice = NULL 
+                    UPDATE users SET voted_for_prince = 0, from_voice_prince = NULL 
                     WHERE id = ?
                 ''', (voter_id,))
             
-            # 3. Удаляем пользователя
+            # 5. Находим всех, кто голосовал за удаляемого пользователя (как принцессу)
+            self.cursor.execute('SELECT id FROM users WHERE from_voice_princess = ?', (user_id,))
+            princess_voters = self.cursor.fetchall()
+            
+            # Сбрасываем статус голосования у тех, кто голосовал за удаляемого как принцессу
+            for voter in princess_voters:
+                voter_id = voter[0]
+                self.cursor.execute('''
+                    UPDATE users SET voted_for_princess = 0, from_voice_princess = NULL 
+                    WHERE id = ?
+                ''', (voter_id,))
+            
+            # 6. Удаляем пользователя и создаем запись с минимальными данными
             self.cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
             self.add_user(user_id)
             
@@ -203,6 +313,7 @@ class UserDB:
         """Проверяет, активно ли голосование"""
         self.cursor.execute('SELECT value FROM settings WHERE key = ?', ('voting_enabled',))
         result = self.cursor.fetchone()
+        self.connection.commit()
         return result[0]
         
     def set_voting_enabled(self, enabled: bool) -> bool:
