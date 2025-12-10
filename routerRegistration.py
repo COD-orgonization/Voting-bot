@@ -5,10 +5,7 @@ from aiogram import F
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from DataBase.mainDB import UserDB
-
-# Инициализация базы данных
-db = UserDB()
+from DataBase.mainDB import db
 
 router = Router()
 
@@ -78,6 +75,6 @@ async def process_photo(message: types.Message, state: FSMContext):
         if success:
             await message.answer("✅ Регистрация завершена!")
         else:
-            await message.answer("❌ Ошибка при регистрации. Возможно, вы уже зарегистрированы.")
+            await message.answer("❌ Ошибка при регистрации. Попробуйте сново.")
     else:
         await message.answer("Пожалуйста, отправьте фотографию!")

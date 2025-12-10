@@ -6,13 +6,12 @@ from aiogram import F
 from DataBase.confing import TOKEN
 from routerRegistration import router as routerReg
 from routerVote import router as routerVoit
-from DataBase.mainDB import UserDB
+from DataBase.mainDB import db
 
 bot = Bot(token= TOKEN)
 dp = Dispatcher()
 dp.include_router(routerReg)
 dp.include_router(routerVoit)
-db = UserDB()
 
 # Функция для создания динамического меню
 async def create_menu_keyboard() -> ReplyKeyboardMarkup:

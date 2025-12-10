@@ -9,33 +9,36 @@ class UserDB:
 
     def create_tables(self):
         """Создание таблиц если они не существуют"""
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY,
-                gender boolean,
-                fio TEXT,
-                description TEXT,
-                photo_id TEXT,
-                from_voice_prince text,
-                from_voice_princess text,            
-                voted_for_prince BOOLEAN DEFAULT 0,
-                voted_for_princess BOOLEAN DEFAULT 0,
-                vote_count INTEGER DEFAULT 0
-            )
-        ''')
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value BOOLEAN DEFAULT 0
-            )
-        ''')
-        self.connection.commit()
-        
-        self.cursor.execute('''
-            INSERT OR IGNORE INTO settings (key, value) 
-            VALUES ('voting_enabled', false)
-        ''')
-        self.connection.commit()
+        try:
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY,
+                    gender boolean,
+                    fio TEXT,
+                    description TEXT,
+                    photo_id TEXT,
+                    from_voice_prince text,
+                    from_voice_princess text,            
+                    voted_for_prince BOOLEAN DEFAULT 0,
+                    voted_for_princess BOOLEAN DEFAULT 0,
+                    vote_count INTEGER DEFAULT 0
+                )
+            ''')
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value BOOLEAN DEFAULT 0
+                )
+            ''')
+            self.connection.commit()
+            
+            self.cursor.execute('''
+                INSERT OR IGNORE INTO settings (key, value) 
+                VALUES ('voting_enabled', false)
+            ''')
+            self.connection.commit()
+        except sqlite3.IntegrityError as e:
+            print(f"Error table: {e}")
         
     def update_user(self, user_id: int, fio: str, photo_id: str, gender: bool, description: str = "") -> bool:
         """Добавление нового пользователя"""
@@ -332,3 +335,5 @@ class UserDB:
     def __del__ (self):
         """Закрытие соединения с БД"""
         self.connection.close()
+
+db = UserDB()
